@@ -485,6 +485,7 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
+		fmt.Println("%d : %d : %d", chID, userID, havereadCache[chID][userID])
 		//lastID, err := queryHaveRead(userID, chID)
 		lastID := havereadCache[chID][userID]
 		if err != nil {
@@ -497,7 +498,6 @@ func fetchUnread(c echo.Context) error {
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
 				chID, lastID)
 		} else {
-			// TODO : messageCountCacheから取り出す
 			//err = db.Get(&cnt,
 			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 			//	chID)
