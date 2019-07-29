@@ -91,7 +91,7 @@ func init() {
 	}
 	unhs := []UserNoHaveread{}
 
-	if err := db.Select(&cmcs, "select c.id as id, count(m.id) as cnt from channel as c join message as m on c.id = m.channel_id group by c.id"); err != nil {
+	if err := db.Select(&cmcs, "SELECT c.id AS id, COUNT(m.id) AS cnt FROM channel AS c JOIN message AS m ON c.id = m.channel_id GROUP BY c.id"); err != nil {
 		panic(err)
 	}
 	for _, cmc := range cmcs {
@@ -100,8 +100,8 @@ func init() {
 		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
 			panic(err)
 		}
+		havereadCache[cmc.ID] = make(map[int64]int64, numberOfUser)
 		for _, unh := range unhs {
-			havereadCache[cmc.ID] = make(map[int64]int64, numberOfUser)
 			havereadCache[cmc.ID][unh.User] = unh.Haveread
 		}
 	}
