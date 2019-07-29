@@ -37,7 +37,7 @@ var (
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
 	// map[channel_id]message_countでキャッシュ
 	messageCountCache map[int64]int64
-	// map[user_id]map[channel_id]message_id でキャッシュ
+	// map[channel_id]map[user_id]message_id でキャッシュ
 	havereadCache map[int64]map[int64]int64
 )
 
@@ -105,8 +105,6 @@ func init() {
 			havereadCache[cmc.ID][unh.User] = unh.Haveread
 		}
 	}
-	fmt.Println(messageCountCache)
-	fmt.Println(havereadCache)
 	log.Printf("Succeeded to cache.")
 }
 
@@ -132,7 +130,7 @@ func getUser(userID int64) (*User, error) {
 }
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
-	// TODO: map[channel_id][messageのcount(*)] をキャッシュで持つ
+	messageCountCache[channelID] = messageCountCache[channelID] + 1
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
 		channelID, userID, content)
@@ -424,18 +422,22 @@ func getMessage(c echo.Context) error {
 		response = append(response, r)
 	}
 
-	// TODO : map[user_id]map[channel_id]message_id でキャッシュ
-	// message_id = hoge[user_id][channel_id]
-	// user, channel指定でどのメッセージまで読んだか
-	if len(messages) > 0 {
-		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
-			" VALUES (?, ?, ?, NOW(), NOW())"+
-			" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
-			userID, chanID, messages[0].ID, messages[0].ID)
-		if err != nil {
-			return err
-		}
+	if _, ok := havereadCache[chanID][userID]; !ok {
+		havereadCache[chanID] = make(map[int64]int64, numberOfUser)
 	}
+	havereadCache[chanID][userID] = messages[0].ID
+
+	/*
+		if len(messages) > 0 {
+			_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
+				" VALUES (?, ?, ?, NOW(), NOW())"+
+				" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
+				userID, chanID, messages[0].ID, messages[0].ID)
+			if err != nil {
+				return err
+			}
+		}
+	*/
 
 	return c.JSON(http.StatusOK, response)
 }
@@ -483,8 +485,8 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		// TODO : havereadCacheから取り出す
-		lastID, err := queryHaveRead(userID, chID)
+		//lastID, err := queryHaveRead(userID, chID)
+		lastID := havereadCache[chID][userID]
 		if err != nil {
 			return err
 		}
@@ -495,10 +497,11 @@ func fetchUnread(c echo.Context) error {
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
 				chID, lastID)
 		} else {
-			err = db.Get(&cnt,
-				// TODO : messageCountCacheから取り出す
-				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
-				chID)
+			// TODO : messageCountCacheから取り出す
+			//err = db.Get(&cnt,
+			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
+			//	chID)
+			cnt = messageCountCache[chID]
 		}
 		if err != nil {
 			return err
