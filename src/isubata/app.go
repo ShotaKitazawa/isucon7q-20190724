@@ -27,12 +27,18 @@ import (
 )
 
 const (
-	avatarMaxBytes = 1 * 1024 * 1024
+	avatarMaxBytes  = 1 * 1024 * 1024
+	numberOfUser    = 2048
+	numberOfChannel = 1024
 )
 
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+	// map[channel_id]message_countでキャッシュ
+	messageCountCache map[int]int
+	// map[user_id]map[channel_id]message_id でキャッシュ
+	havereadCache map[int][]int
 )
 
 type Renderer struct {
@@ -70,6 +76,37 @@ func init() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+
+	messageCountCache = make(map[int]int, numberOfChannel)
+	havereadCache = make(map[int]map[int]int, numberOfUser)
+
+	type ChannelMessageCount struct {
+		ID  int64 `db:"id"`
+		Cnt int64 `db:"cnt"`
+	}
+	cmcs := []ChannelMessageCount{}
+	type UserNoHaveread struct {
+		User     int64 `db:"user"`
+		Haveread int64 `db:"haveread"`
+	}
+	unhs := []UserNoHaveread{}
+
+	if err := db.Select(&cmcs, "select c.id as id, count(m.id) as cnt from channel as c join message as m on c.id = m.channel_id group by c.id"); err != nil {
+		return nil, err
+	}
+	for _, cmc := range cmcs {
+		messageCountCache[cmc.ID] = cmc.Cnt
+
+		if err := db.Select(&unhs, "select u.id as user, h.message_id as haveread from user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.id); err != nil {
+			return nil, err
+		}
+		for _, unh := range unhs {
+			havereadCache[unh.User][cmc.ID] = unh.Haveread
+		}
+	}
+	fmt.Println(messageCountCache)
+	fmt.Println(havereadCache)
+	log.Printf("Succeeded to cache.")
 }
 
 type User struct {
@@ -94,7 +131,7 @@ func getUser(userID int64) (*User, error) {
 }
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
-	// TODO: map[channel_id][message_count] をキャッシュで持つ
+	// TODO: map[channel_id][messageのcount(*)] をキャッシュで持つ
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
 		channelID, userID, content)
@@ -388,6 +425,7 @@ func getMessage(c echo.Context) error {
 
 	// TODO : map[user_id]map[channel_id]message_id でキャッシュ
 	// message_id = hoge[user_id][channel_id]
+	// user, channel指定でどのメッセージまで読んだか
 	if len(messages) > 0 {
 		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
 			" VALUES (?, ?, ?, NOW(), NOW())"+
@@ -444,7 +482,7 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		// TODO : cacheから取り出す
+		// TODO : havereadCacheから取り出す
 		lastID, err := queryHaveRead(userID, chID)
 		if err != nil {
 			return err
@@ -457,7 +495,7 @@ func fetchUnread(c echo.Context) error {
 				chID, lastID)
 		} else {
 			err = db.Get(&cnt,
-				// TODO : cache から取り出す
+				// TODO : messageCountCacheから取り出す
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 				chID)
 		}
