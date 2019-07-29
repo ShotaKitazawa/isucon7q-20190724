@@ -36,9 +36,9 @@ var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
 	// map[channel_id]message_countでキャッシュ
-	messageCountCache map[int]int
+	messageCountCache map[int64]int64
 	// map[user_id]map[channel_id]message_id でキャッシュ
-	havereadCache map[int][]int
+	havereadCache map[int64]map[int64]int64
 )
 
 type Renderer struct {
@@ -77,8 +77,8 @@ func init() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
 
-	messageCountCache = make(map[int]int, numberOfChannel)
-	havereadCache = make(map[int]map[int]int, numberOfUser)
+	messageCountCache = make(map[int64]int64, numberOfChannel)
+	havereadCache = make(map[int64]map[int64]int64, numberOfChannel)
 
 	type ChannelMessageCount struct {
 		ID  int64 `db:"id"`
@@ -92,16 +92,17 @@ func init() {
 	unhs := []UserNoHaveread{}
 
 	if err := db.Select(&cmcs, "select c.id as id, count(m.id) as cnt from channel as c join message as m on c.id = m.channel_id group by c.id"); err != nil {
-		return nil, err
+		panic(err)
 	}
 	for _, cmc := range cmcs {
 		messageCountCache[cmc.ID] = cmc.Cnt
 
-		if err := db.Select(&unhs, "select u.id as user, h.message_id as haveread from user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.id); err != nil {
-			return nil, err
+		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
+			panic(err)
 		}
 		for _, unh := range unhs {
-			havereadCache[unh.User][cmc.ID] = unh.Haveread
+			havereadCache[cmc.ID] = make(map[int64]int64, numberOfUser)
+			havereadCache[cmc.ID][unh.User] = unh.Haveread
 		}
 	}
 	fmt.Println(messageCountCache)
