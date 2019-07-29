@@ -103,6 +103,10 @@ func init() {
 		havereadCache[cmc.ID] = make(map[int64]int64, numberOfUser)
 		for _, unh := range unhs {
 			havereadCache[cmc.ID][unh.User] = unh.Haveread
+			// Debug
+			if unh.User == 1328 {
+				fmt.Println(cmc.ID, unh.Haveread)
+			}
 		}
 	}
 	log.Printf("Succeeded to cache.")
@@ -485,7 +489,7 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		fmt.Println("%d : %d : %d", chID, userID, havereadCache[chID][userID])
+		fmt.Println(chID, userID, havereadCache[chID][userID])
 		//lastID, err := queryHaveRead(userID, chID)
 		lastID := havereadCache[chID][userID]
 		if err != nil {
