@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo"
@@ -227,16 +227,14 @@ func register(name, password string) (int64, error) {
 	salt := randomString(20)
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(salt+password)))
 
-	/*
-		res, err := db.Exec(
-			"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
-				" VALUES (?, ?, ?, ?, ?, NOW())",
-			name, salt, digest, name, "default.png")
-		if err != nil {
-			return 0, err
-		}
-		return res.LastInsertId()
-	*/
+	res, err := db.Exec(
+		"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
+			" VALUES (?, ?, ?, ?, ?, NOW())",
+		name, salt, digest, name, "default.png")
+	if err != nil {
+		return 0, err
+	}
+
 	u := User{
 		Name:        name,
 		Salt:        salt,
@@ -380,15 +378,12 @@ func postRegister(c echo.Context) error {
 	}
 	userID, err := register(name, pw)
 	if err != nil {
-		/*
-			if merr, ok := err.(*mysql.MySQLError); ok {
-				if merr.Number == 1062 { // Duplicate entry xxxx for key zzzz
-					return c.NoContent(http.StatusConflict)
-				}
+		if merr, ok := err.(*mysql.MySQLError); ok {
+			if merr.Number == 1062 { // Duplicate entry xxxx for key zzzz
+				return c.NoContent(http.StatusConflict)
 			}
-			return err
-		*/
-		return c.NoContent(http.StatusConflict)
+		}
+		return err
 	}
 	sessSetUserID(c, userID)
 	return c.Redirect(http.StatusSeeOther, "/")
