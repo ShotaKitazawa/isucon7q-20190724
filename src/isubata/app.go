@@ -48,10 +48,10 @@ func init() {
 	crand.Read(seedBuf)
 	rand.Seed(int64(binary.LittleEndian.Uint64(seedBuf)))
 
-	db_host = "10.128.0.2"
-	db_port = "3306"
-	db_user = "isucon"
-	db_password = "isucon"
+	db_host := "10.128.0.2"
+	db_port := "3306"
+	db_user := "isucon"
+	db_password := "isucon"
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/isubata?parseTime=true&loc=Local&charset=utf8mb4",
 		db_user, db_password, db_host, db_port)
