@@ -81,6 +81,8 @@ func init() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
 
+	messageCountCache = make(map[int64]int64, numberOfChannel)
+	havereadCache = make(map[string]int64, numberOfUser)
 }
 
 type User struct {
@@ -213,9 +215,6 @@ func getInitialize(c echo.Context) error {
 	db.MustExec("DELETE FROM channel WHERE id > 10")
 	db.MustExec("DELETE FROM message WHERE id > 10000")
 	db.MustExec("DELETE FROM haveread")
-
-	messageCountCache = make(map[int64]int64, numberOfChannel)
-	havereadCache = make(map[string]int64, numberOfUser)
 
 	type ChannelMessageCount struct {
 		ID  int64 `db:"id"`
