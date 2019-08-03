@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -27,12 +28,21 @@ import (
 )
 
 const (
-	avatarMaxBytes = 1 * 1024 * 1024
+	avatarMaxBytes  = 1 * 1024 * 1024
+	numberOfUser    = 2048
+	numberOfChannel = 1024
 )
 
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+
+	// map[channel_id]message_countでキャッシュ
+	messageCountCache      map[int64]int64
+	messageCountCacheMutex sync.Mutex
+	// map[channel_id]map[user_id]message_id でキャッシュ
+	havereadCache      map[string]int64
+	havereadCacheMutex sync.Mutex
 )
 
 type Renderer struct {
@@ -70,6 +80,9 @@ func init() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+
+	messageCountCache = make(map[int64]int64, numberOfChannel)
+	havereadCache = make(map[string]int64, numberOfUser)
 }
 
 type User struct {
@@ -94,6 +107,11 @@ func getUser(userID int64) (*User, error) {
 }
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
+
+	messageCountCacheMutex.Lock()
+	messageCountCache[channelID] = messageCountCache[channelID] + 1
+	messageCountCacheMutex.Unlock()
+
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
 		channelID, userID, content)
@@ -197,6 +215,34 @@ func getInitialize(c echo.Context) error {
 	db.MustExec("DELETE FROM channel WHERE id > 10")
 	db.MustExec("DELETE FROM message WHERE id > 10000")
 	db.MustExec("DELETE FROM haveread")
+
+	type ChannelMessageCount struct {
+		ID  int64 `db:"id"`
+		Cnt int64 `db:"cnt"`
+	}
+	cmcs := []ChannelMessageCount{}
+	type UserNoHaveread struct {
+		User     int64 `db:"user"`
+		Haveread int64 `db:"haveread"`
+	}
+	unhs := []UserNoHaveread{}
+
+	if err := db.Select(&cmcs, "SELECT c.id AS id, COUNT(m.id) AS cnt FROM channel AS c JOIN message AS m ON c.id = m.channel_id GROUP BY c.id"); err != nil {
+		panic(err)
+	}
+	for _, cmc := range cmcs {
+		messageCountCache[cmc.ID] = cmc.Cnt
+
+		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
+			panic(err)
+		}
+		for _, unh := range unhs {
+			digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(cmc.ID))+strconv.Itoa(int(unh.User)))))
+			havereadCache[digest] = unh.Haveread
+		}
+	}
+	log.Printf("Succeeded to cache.")
+
 	return c.String(204, "")
 }
 
@@ -385,15 +431,25 @@ func getMessage(c echo.Context) error {
 		response = append(response, r)
 	}
 
+	digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chanID))+strconv.Itoa(int(userID)))))
+
 	if len(messages) > 0 {
-		_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
-			" VALUES (?, ?, ?, NOW(), NOW())"+
-			" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
-			userID, chanID, messages[0].ID, messages[0].ID)
-		if err != nil {
-			return err
-		}
+		havereadCacheMutex.Lock()
+		havereadCache[digest] = messages[0].ID
+		havereadCacheMutex.Unlock()
 	}
+
+	/*
+		if len(messages) > 0 {
+			_, err := db.Exec("INSERT INTO haveread (user_id, channel_id, message_id, updated_at, created_at)"+
+				" VALUES (?, ?, ?, NOW(), NOW())"+
+				" ON DUPLICATE KEY UPDATE message_id = ?, updated_at = NOW()",
+				userID, chanID, messages[0].ID, messages[0].ID)
+			if err != nil {
+				return err
+			}
+		}
+	*/
 
 	return c.JSON(http.StatusOK, response)
 }
@@ -441,10 +497,12 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		lastID, err := queryHaveRead(userID, chID)
-		if err != nil {
-			return err
-		}
+		//lastID, err := queryHaveRead(userID, chID)
+		digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chID))+strconv.Itoa(int(userID)))))
+
+		havereadCacheMutex.Lock()
+		lastID := havereadCache[digest]
+		havereadCacheMutex.Unlock()
 
 		var cnt int64
 		if lastID > 0 {
@@ -452,9 +510,12 @@ func fetchUnread(c echo.Context) error {
 				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ? AND ? < id",
 				chID, lastID)
 		} else {
-			err = db.Get(&cnt,
-				"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
-				chID)
+			//err = db.Get(&cnt,
+			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
+			//	chID)
+			messageCountCacheMutex.Lock()
+			cnt = messageCountCache[chID]
+			messageCountCacheMutex.Unlock()
 		}
 		if err != nil {
 			return err
@@ -492,10 +553,10 @@ func getHistory(c echo.Context) error {
 
 	const N = 20
 	var cnt int64
-	err = db.Get(&cnt, "SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?", chID)
-	if err != nil {
-		return err
-	}
+	messageCountCacheMutex.Lock()
+	cnt = messageCountCache[chID]
+	messageCountCacheMutex.Unlock()
+
 	maxPage := int64(cnt+N-1) / N
 	if maxPage == 0 {
 		maxPage = 1
