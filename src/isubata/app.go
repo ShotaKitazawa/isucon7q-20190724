@@ -50,7 +50,8 @@ func init() {
 
 	db_host := os.Getenv("ISUBATA_DB_HOST")
 	if db_host == "" {
-		db_host = "127.0.0.1"
+		//db_host = "127.0.0.1"
+		db_host = "10.128.0.2"
 	}
 	db_port := os.Getenv("ISUBATA_DB_PORT")
 	if db_port == "" {
