@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -35,10 +36,13 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+
 	// map[channel_id]message_countでキャッシュ
-	messageCountCache map[int64]int64
+	messageCountCache      map[int64]int64
+	messageCountCacheMutex sync.Mutex
 	// map[channel_id]map[user_id]message_id でキャッシュ
-	havereadCache map[string]int64
+	havereadCache      map[string]int64
+	havereadCacheMutex sync.Mutex
 )
 
 type Renderer struct {
@@ -101,7 +105,11 @@ func getUser(userID int64) (*User, error) {
 }
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
+
+	messageCountCacheMutex.Lock()
 	messageCountCache[channelID] = messageCountCache[channelID] + 1
+	messageCountCacheMutex.Unlock()
+
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
 		channelID, userID, content)
@@ -425,7 +433,10 @@ func getMessage(c echo.Context) error {
 	}
 
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chanID))+strconv.Itoa(int(userID)))))
+
+	havereadCacheMutex.Lock()
 	havereadCache[digest] = messages[0].ID
+	havereadCacheMutex.Unlock()
 
 	/*
 		if len(messages) > 0 {
@@ -487,10 +498,10 @@ func fetchUnread(c echo.Context) error {
 	for _, chID := range channels {
 		//lastID, err := queryHaveRead(userID, chID)
 		digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chID))+strconv.Itoa(int(userID)))))
+
+		havereadCacheMutex.Lock()
 		lastID := havereadCache[digest]
-		if err != nil {
-			return err
-		}
+		havereadCacheMutex.Unlock()
 
 		var cnt int64
 		if lastID > 0 {
@@ -501,7 +512,9 @@ func fetchUnread(c echo.Context) error {
 			//err = db.Get(&cnt,
 			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 			//	chID)
+			messageCountCacheMutex.Lock()
 			cnt = messageCountCache[chID]
+			messageCountCacheMutex.Unlock()
 		}
 		if err != nil {
 			return err
