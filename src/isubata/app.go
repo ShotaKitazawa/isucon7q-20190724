@@ -12,6 +12,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -47,24 +48,12 @@ func init() {
 	crand.Read(seedBuf)
 	rand.Seed(int64(binary.LittleEndian.Uint64(seedBuf)))
 
-	db_host := os.Getenv("ISUBATA_DB_HOST")
-	if db_host == "" {
-		db_host = "127.0.0.1"
-	}
-	db_port := os.Getenv("ISUBATA_DB_PORT")
-	if db_port == "" {
-		db_port = "3306"
-	}
-	db_user := os.Getenv("ISUBATA_DB_USER")
-	if db_user == "" {
-		db_user = "root"
-	}
-	db_password := os.Getenv("ISUBATA_DB_PASSWORD")
-	if db_password != "" {
-		db_password = ":" + db_password
-	}
+	db_host := "10.128.0.2"
+	db_port := "3306"
+	db_user := "isucon"
+	db_password := "isucon"
 
-	dsn := fmt.Sprintf("%s%s@tcp(%s:%s)/isubata?parseTime=true&loc=Local&charset=utf8mb4",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/isubata?parseTime=true&loc=Local&charset=utf8mb4",
 		db_user, db_password, db_host, db_port)
 
 	log.Printf("Connecting to db: %q", dsn)
@@ -662,10 +651,17 @@ func postProfile(c echo.Context) error {
 	}
 
 	if avatarName != "" && len(avatarData) > 0 {
-		_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
+		file, err := os.Create(fmt.Sprintf("/home/isucon/isubata/webapp/public/icons/%s", avatarName))
 		if err != nil {
-			return err
+			panic(err)
 		}
+		defer file.Close()
+
+		file.Write(avatarData)
+		//_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
+		//if err != nil {
+		//	return err
+		//}
 		_, err = db.Exec("UPDATE user SET avatar_icon = ? WHERE id = ?", avatarName, self.ID)
 		if err != nil {
 			return err
@@ -721,6 +717,8 @@ func tRange(a, b int64) []int64 {
 }
 
 func main() {
+	go http.ListenAndServe(":3000", nil)
+
 	e := echo.New()
 	funcs := template.FuncMap{
 		"add":    tAdd,
