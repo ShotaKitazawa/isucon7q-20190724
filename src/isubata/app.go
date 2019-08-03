@@ -229,8 +229,16 @@ func register(name, password string) (int64, error) {
 	salt := randomString(20)
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(salt+password)))
 
+	res, err := db.Exec(
+		"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
+			" VALUES (?, ?, ?, ?, ?, NOW())",
+		name, salt, digest, name, "default.png")
+	if err != nil {
+		return 0, err
+	}
+	uid, _ := res.LastInsertId()
+
 	nextUserIDMutex.Lock()
-	uid := nextUserID
 	nextUserID = uid + 1
 	nextUserIDMutex.Unlock()
 
@@ -254,14 +262,6 @@ func register(name, password string) (int64, error) {
 	userName2OrderMutex.Unlock()
 
 	userCacheMutex.Unlock()
-
-	_, err := db.Exec(
-		"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
-			" VALUES (?, ?, ?, ?, ?, NOW())",
-		name, salt, digest, name, "default.png")
-	if err != nil {
-		return 0, err
-	}
 
 	return int64(len(userCache) - 1), nil
 }
@@ -412,6 +412,7 @@ func postLogin(c echo.Context) error {
 	index, ok := userName2Order[name]
 	userName2OrderMutex.Unlock()
 	if !ok {
+		fmt.Println("Forbidden")
 		return echo.ErrForbidden
 	}
 
