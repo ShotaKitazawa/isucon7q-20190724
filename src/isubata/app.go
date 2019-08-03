@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo"
@@ -380,12 +379,15 @@ func postRegister(c echo.Context) error {
 	}
 	userID, err := register(name, pw)
 	if err != nil {
-		if merr, ok := err.(*mysql.MySQLError); ok {
-			if merr.Number == 1062 { // Duplicate entry xxxx for key zzzz
-				return c.NoContent(http.StatusConflict)
+		/*
+			if merr, ok := err.(*mysql.MySQLError); ok {
+				if merr.Number == 1062 { // Duplicate entry xxxx for key zzzz
+					return c.NoContent(http.StatusConflict)
+				}
 			}
-		}
-		return err
+			return err
+		*/
+		return c.NoContent(http.StatusConflict)
 	}
 	sessSetUserID(c, userID)
 	return c.Redirect(http.StatusSeeOther, "/")
