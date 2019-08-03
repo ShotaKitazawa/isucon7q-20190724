@@ -889,6 +889,13 @@ func tRange(a, b int64) []int64 {
 	return r
 }
 
+func debug(c echo.Context) error {
+	for idx, val := range userID2Order {
+		fmt.Println(idx, val)
+	}
+	return nil
+}
+
 func main() {
 	go http.ListenAndServe(":3000", nil)
 
@@ -926,6 +933,7 @@ func main() {
 	e.GET("add_channel", getAddChannel)
 	e.POST("add_channel", postAddChannel)
 	e.GET("/icons/:file_name", getIcon)
+	e.GET("/debug", debug)
 
 	e.Start(":5000")
 }
