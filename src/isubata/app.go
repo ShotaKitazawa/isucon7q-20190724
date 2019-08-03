@@ -44,10 +44,14 @@ var (
 	havereadCache      map[string]int64
 	havereadCacheMutex sync.Mutex
 	// userキャッシュ
-	userCache          []User
-	userCacheMutex     sync.Mutex
-	userNameCache      map[string]User
-	userNameCacheMutex sync.Mutex
+	userCache           []User
+	userCacheMutex      sync.Mutex
+	nextUserID          int64
+	nextUserIDMutex     sync.Mutex
+	userName2Order      map[string]int
+	userName2OrderMutex sync.Mutex
+	userID2Order        map[int64]int
+	userID2OrderMutex   sync.Mutex
 )
 
 type Renderer struct {
@@ -88,17 +92,18 @@ func init() {
 
 	messageCountCache = make(map[int64]int64, numberOfChannel)
 	havereadCache = make(map[string]int64, numberOfUser*10)
-	userNameCache = make(map[string]User, numberOfUser)
+	userID2Order = make(map[int64]int, numberOfUser)
+	userName2Order = make(map[string]int, numberOfUser)
 
 	userCache = []User{}
 	if err := db.Select(&userCache, "SELECT * FROM user"); err != nil {
 		panic(err)
 	}
-	for _, user := range userCache {
-		userNameCache[user.Name] = user
+	for idx, user := range userCache {
+		userID2Order[user.ID] = idx
+		userName2Order[user.Name] = idx
+		nextUserID = user.ID + 1
 	}
-	fmt.Println(userCache)
-	fmt.Println(len(userCache))
 
 }
 
@@ -242,9 +247,20 @@ func register(name, password string) (int64, error) {
 	userCacheMutex.Lock()
 	userCache = append(userCache, u)
 	userCacheMutex.Unlock()
-	userNameCacheMutex.Lock()
-	userNameCache[name] = u
-	userNameCacheMutex.Unlock()
+
+	nextUserIDMutex.Lock()
+	uid := nextUserID
+	nextUserID++
+	nextUserIDMutex.Unlock()
+	userIndex := len(userCache) - 1
+
+	userID2OrderMutex.Lock()
+	userID2Order[uid] = userIndex
+	userID2OrderMutex.Unlock()
+
+	userName2OrderMutex.Lock()
+	userName2Order[u.Name] = userIndex
+	userName2OrderMutex.Unlock()
 
 	return int64(len(userCache) - 1), nil
 }
@@ -288,8 +304,10 @@ func getInitialize(c echo.Context) error {
 	if err := db.Select(&userCache, "SELECT * FROM user"); err != nil {
 		panic(err)
 	}
-	for _, user := range userCache {
-		userNameCache[user.Name] = user
+	for idx, user := range userCache {
+		userID2Order[user.ID] = idx
+		userName2Order[user.Name] = idx
+		nextUserID = user.ID + 1
 	}
 
 	log.Printf("Succeeded to cache.")
@@ -389,12 +407,15 @@ func postLogin(c echo.Context) error {
 
 	var user User
 
-	userNameCacheMutex.Lock()
-	user, ok := userNameCache[name]
-	userNameCacheMutex.Unlock()
+	userName2OrderMutex.Lock()
+	index, ok := userName2Order[name]
+	userName2OrderMutex.Unlock()
 	if !ok {
 		return echo.ErrForbidden
 	}
+	userCacheMutex.Lock()
+	user = userCache[index]
+	userCacheMutex.Unlock()
 
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(user.Salt+pw)))
 	if digest != user.Password {
@@ -662,12 +683,16 @@ func getProfile(c echo.Context) error {
 	userName := c.Param("user_name")
 	var other User
 
-	userNameCacheMutex.Lock()
-	other, ok := userNameCache[userName]
-	userNameCacheMutex.Unlock()
+	userName2OrderMutex.Lock()
+	index, ok := userName2Order[userName]
+	userName2OrderMutex.Unlock()
 	if !ok {
 		return echo.ErrForbidden
 	}
+
+	userCacheMutex.Lock()
+	other = userCache[index]
+	userCacheMutex.Unlock()
 
 	/*
 		err = db.Get(&other, "SELECT * FROM user WHERE name = ?", userName)
@@ -798,9 +823,6 @@ func postProfile(c echo.Context) error {
 		userCacheMutex.Lock()
 		userCache[self.ID-1] = u
 		userCacheMutex.Unlock()
-		userNameCacheMutex.Lock()
-		userNameCache[u.Name] = u
-		userNameCacheMutex.Unlock()
 	}
 
 	if name := c.FormValue("display_name"); name != "" {
@@ -818,9 +840,6 @@ func postProfile(c echo.Context) error {
 		userCacheMutex.Lock()
 		userCache[self.ID-1] = u
 		userCacheMutex.Unlock()
-		userNameCacheMutex.Lock()
-		userNameCache[u.Name] = u
-		userNameCacheMutex.Unlock()
 	}
 
 	return c.Redirect(http.StatusSeeOther, "/")
