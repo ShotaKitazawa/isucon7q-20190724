@@ -225,6 +225,8 @@ func randomString(n int) string {
 
 func register(name, password string) (int64, error) {
 	userCacheMutex.Lock()
+	userID2OrderMutex.Lock()
+	userName2OrderMutex.Lock()
 
 	salt := randomString(20)
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(salt+password)))
@@ -253,11 +255,9 @@ func register(name, password string) (int64, error) {
 	userCache = append(userCache, u)
 	index := len(userCache) - 1
 
-	userID2OrderMutex.Lock()
 	userID2Order[uid] = index
 	userID2OrderMutex.Unlock()
 
-	userName2OrderMutex.Lock()
 	userName2Order[u.Name] = index
 	userName2OrderMutex.Unlock()
 
