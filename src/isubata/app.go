@@ -77,37 +77,6 @@ func init() {
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
 
-	messageCountCache = make(map[int64]int64, numberOfChannel)
-	havereadCache = make(map[string]int64, numberOfUser)
-
-	type ChannelMessageCount struct {
-		ID  int64 `db:"id"`
-		Cnt int64 `db:"cnt"`
-	}
-	cmcs := []ChannelMessageCount{}
-	type UserNoHaveread struct {
-		User     int64 `db:"user"`
-		Haveread int64 `db:"haveread"`
-	}
-	unhs := []UserNoHaveread{}
-
-	if err := db.Select(&cmcs, "SELECT c.id AS id, COUNT(m.id) AS cnt FROM channel AS c JOIN message AS m ON c.id = m.channel_id GROUP BY c.id"); err != nil {
-		panic(err)
-	}
-	for _, cmc := range cmcs {
-		messageCountCache[cmc.ID] = cmc.Cnt
-
-		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
-			panic(err)
-		}
-		for _, unh := range unhs {
-			digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(cmc.ID))+strconv.Itoa(int(unh.User)))))
-			havereadCache[digest] = unh.Haveread
-		}
-	}
-	fmt.Println(sha1.Sum([]byte("hoge")))
-	fmt.Println(sha1.Sum([]byte("hoge")))
-	log.Printf("Succeeded to cache.")
 }
 
 type User struct {
@@ -236,6 +205,37 @@ func getInitialize(c echo.Context) error {
 	db.MustExec("DELETE FROM channel WHERE id > 10")
 	db.MustExec("DELETE FROM message WHERE id > 10000")
 	db.MustExec("DELETE FROM haveread")
+
+	messageCountCache = make(map[int64]int64, numberOfChannel)
+	havereadCache = make(map[string]int64, numberOfUser)
+
+	type ChannelMessageCount struct {
+		ID  int64 `db:"id"`
+		Cnt int64 `db:"cnt"`
+	}
+	cmcs := []ChannelMessageCount{}
+	type UserNoHaveread struct {
+		User     int64 `db:"user"`
+		Haveread int64 `db:"haveread"`
+	}
+	unhs := []UserNoHaveread{}
+
+	if err := db.Select(&cmcs, "SELECT c.id AS id, COUNT(m.id) AS cnt FROM channel AS c JOIN message AS m ON c.id = m.channel_id GROUP BY c.id"); err != nil {
+		panic(err)
+	}
+	for _, cmc := range cmcs {
+		messageCountCache[cmc.ID] = cmc.Cnt
+
+		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
+			panic(err)
+		}
+		for _, unh := range unhs {
+			digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(cmc.ID))+strconv.Itoa(int(unh.User)))))
+			havereadCache[digest] = unh.Haveread
+		}
+	}
+	log.Printf("Succeeded to cache.")
+
 	return c.String(204, "")
 }
 
