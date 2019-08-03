@@ -234,6 +234,11 @@ func register(name, password string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	uid, _ := res.LastInsertId()
+
+	nextUserIDMutex.Lock()
+	nextUserID = uid + 1
+	nextUserIDMutex.Unlock()
 
 	u := User{
 		Name:        name,
@@ -245,20 +250,15 @@ func register(name, password string) (int64, error) {
 	}
 	userCacheMutex.Lock()
 	userCache = append(userCache, u)
+	index := len(userCache) - 1
 	userCacheMutex.Unlock()
 
-	nextUserIDMutex.Lock()
-	uid := nextUserID
-	nextUserID++
-	nextUserIDMutex.Unlock()
-	userIndex := len(userCache) - 1
-
 	userID2OrderMutex.Lock()
-	userID2Order[uid] = userIndex
+	userID2Order[uid] = index
 	userID2OrderMutex.Unlock()
 
 	userName2OrderMutex.Lock()
-	userName2Order[u.Name] = userIndex
+	userName2Order[u.Name] = index
 	userName2OrderMutex.Unlock()
 
 	return int64(len(userCache) - 1), nil
