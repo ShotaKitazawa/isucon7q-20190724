@@ -414,14 +414,12 @@ func postLogin(c echo.Context) error {
 	if !ok {
 		return echo.ErrForbidden
 	}
-	fmt.Println(index)
-	fmt.Println("-----------------")
-	for _, val := range userCache {
-		fmt.Println(val.ID)
-	}
-	fmt.Println("-----------------")
 
 	userCacheMutex.Lock()
+	fmt.Println("-----------------")
+	fmt.Println(len(userCache))
+	fmt.Println(index)
+	fmt.Println("-----------------")
 	user = userCache[index]
 	userCacheMutex.Unlock()
 
