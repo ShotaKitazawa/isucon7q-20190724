@@ -105,6 +105,8 @@ func init() {
 			havereadCache[digest] = unh.Haveread
 		}
 	}
+	fmt.Println(sha1.Sum([]byte("hoge")))
+	fmt.Println(sha1.Sum([]byte("hoge")))
 	log.Printf("Succeeded to cache.")
 }
 
