@@ -412,6 +412,7 @@ func postLogin(c echo.Context) error {
 	if !ok {
 		return echo.ErrForbidden
 	}
+	fmt.Println(index)
 	userCacheMutex.Lock()
 	user = userCache[index]
 	userCacheMutex.Unlock()
