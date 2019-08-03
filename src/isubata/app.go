@@ -695,7 +695,7 @@ func getProfile(c echo.Context) error {
 	index, ok := userName2Order[userName]
 	userName2OrderMutex.Unlock()
 	if !ok {
-		return echo.ErrForbidden
+		return echo.ErrNotFound
 	}
 
 	userCacheMutex.Lock()
