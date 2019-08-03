@@ -38,7 +38,7 @@ var (
 	// map[channel_id]message_countでキャッシュ
 	messageCountCache map[int64]int64
 	// map[channel_id]map[user_id]message_id でキャッシュ
-	havereadCache map[int64]map[int64]int64
+	havereadCache map[string]int64
 )
 
 type Renderer struct {
@@ -78,7 +78,7 @@ func init() {
 	log.Printf("Succeeded to connect db.")
 
 	messageCountCache = make(map[int64]int64, numberOfChannel)
-	havereadCache = make(map[int64]map[int64]int64, numberOfChannel)
+	havereadCache = make(map[string]int64, numberOfUser)
 
 	type ChannelMessageCount struct {
 		ID  int64 `db:"id"`
@@ -100,13 +100,9 @@ func init() {
 		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
 			panic(err)
 		}
-		havereadCache[cmc.ID] = make(map[int64]int64, numberOfUser)
 		for _, unh := range unhs {
-			havereadCache[cmc.ID][unh.User] = unh.Haveread
-			// Debug
-			if unh.User == 1328 {
-				fmt.Println(cmc.ID, unh.Haveread)
-			}
+			digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(cmc.ID))+strconv.Itoa(int(unh.User)))))
+			havereadCache[digest] = unh.Haveread
 		}
 	}
 	log.Printf("Succeeded to cache.")
@@ -426,10 +422,8 @@ func getMessage(c echo.Context) error {
 		response = append(response, r)
 	}
 
-	if _, ok := havereadCache[chanID][userID]; !ok {
-		havereadCache[chanID] = make(map[int64]int64, numberOfUser)
-	}
-	havereadCache[chanID][userID] = messages[0].ID
+	digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chanID))+strconv.Itoa(int(userID)))))
+	havereadCache[digest] = messages[0].ID
 
 	/*
 		if len(messages) > 0 {
@@ -489,9 +483,9 @@ func fetchUnread(c echo.Context) error {
 	resp := []map[string]interface{}{}
 
 	for _, chID := range channels {
-		fmt.Println(chID, userID, havereadCache[chID][userID])
 		//lastID, err := queryHaveRead(userID, chID)
-		lastID := havereadCache[chID][userID]
+		digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chID))+strconv.Itoa(int(userID)))))
+		lastID := havereadCache[digest]
 		if err != nil {
 			return err
 		}
