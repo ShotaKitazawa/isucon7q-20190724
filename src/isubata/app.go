@@ -416,7 +416,9 @@ func postLogin(c echo.Context) error {
 	}
 	fmt.Println(index)
 	fmt.Println("-----------------")
-	fmt.Println(userCache)
+	for _, val := range userCache {
+		fmt.Println(val.id)
+	}
 	fmt.Println("-----------------")
 
 	userCacheMutex.Lock()
