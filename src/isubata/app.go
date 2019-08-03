@@ -89,6 +89,15 @@ func init() {
 	messageCountCache = make(map[int64]int64, numberOfChannel)
 	havereadCache = make(map[string]int64, numberOfUser*10)
 	userNameCache = make(map[string]User, numberOfUser)
+
+	userCache = []User{}
+	if err := db.Select(&userCache, "SELECT * FROM user"); err != nil {
+		panic(err)
+	}
+	for _, user := range userCache {
+		userNameCache[user.Name] = user
+	}
+
 }
 
 type User struct {
@@ -768,16 +777,16 @@ func postProfile(c echo.Context) error {
 
 		file.Write(avatarData)
 		/*
-		_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
-		if err != nil {
-			return err
-		}
+			_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
+			if err != nil {
+				return err
+			}
 		*/
 		/*
-		_, err = db.Exec("UPDATE user SET avatar_icon = ? WHERE id = ?", avatarName, self.ID)
-		if err != nil {
-			return err
-		}
+			_, err = db.Exec("UPDATE user SET avatar_icon = ? WHERE id = ?", avatarName, self.ID)
+			if err != nil {
+				return err
+			}
 		*/
 		userCacheMutex.Lock()
 		u := userCache[self.ID-1]
@@ -794,10 +803,10 @@ func postProfile(c echo.Context) error {
 
 	if name := c.FormValue("display_name"); name != "" {
 		/*
-		_, err := db.Exec("UPDATE user SET display_name = ? WHERE id = ?", name, self.ID)
-		if err != nil {
-			return err
-		}
+			_, err := db.Exec("UPDATE user SET display_name = ? WHERE id = ?", name, self.ID)
+			if err != nil {
+				return err
+			}
 		*/
 		userCacheMutex.Lock()
 		u := userCache[self.ID-1]
