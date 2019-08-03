@@ -43,6 +43,11 @@ var (
 	// map[channel_id]map[user_id]message_id でキャッシュ
 	havereadCache      map[string]int64
 	havereadCacheMutex sync.Mutex
+	// userキャッシュ
+	userCache          []User
+	userCacheMutex     sync.Mutex
+	userNameCache      map[string]User
+	userNameCacheMutex sync.Mutex
 )
 
 type Renderer struct {
@@ -82,7 +87,8 @@ func init() {
 	log.Printf("Succeeded to connect db.")
 
 	messageCountCache = make(map[int64]int64, numberOfChannel)
-	havereadCache = make(map[string]int64, numberOfUser)
+	havereadCache = make(map[string]int64, numberOfUser*10)
+	userNameCache = make(map[string]User, numberOfUser)
 }
 
 type User struct {
@@ -96,14 +102,21 @@ type User struct {
 }
 
 func getUser(userID int64) (*User, error) {
-	u := User{}
-	if err := db.Get(&u, "SELECT * FROM user WHERE id = ?", userID); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
+	if len(userCache) < int(userID) {
+		return nil, nil
+	} else {
+		return &userCache[userID-1], nil
 	}
-	return &u, nil
+	/*
+		u := User{}
+		if err := db.Get(&u, "SELECT * FROM user WHERE id = ?", userID); err != nil {
+			if err == sql.ErrNoRows {
+				return nil, nil
+			}
+			return nil, err
+		}
+		return &u, nil
+	*/
 }
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
@@ -197,14 +210,32 @@ func register(name, password string) (int64, error) {
 	salt := randomString(20)
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(salt+password)))
 
-	res, err := db.Exec(
-		"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
-			" VALUES (?, ?, ?, ?, ?, NOW())",
-		name, salt, digest, name, "default.png")
-	if err != nil {
-		return 0, err
+	/*
+		res, err := db.Exec(
+			"INSERT INTO user (name, salt, password, display_name, avatar_icon, created_at)"+
+				" VALUES (?, ?, ?, ?, ?, NOW())",
+			name, salt, digest, name, "default.png")
+		if err != nil {
+			return 0, err
+		}
+		return res.LastInsertId()
+	*/
+	u := User{
+		Name:        name,
+		Salt:        salt,
+		Password:    digest,
+		DisplayName: name,
+		AvatarIcon:  "default.png",
+		CreatedAt:   time.Now(),
 	}
-	return res.LastInsertId()
+	userCacheMutex.Lock()
+	userCache = append(userCache, u)
+	userCacheMutex.Unlock()
+	userNameCacheMutex.Lock()
+	userNameCache[name] = u
+	userNameCacheMutex.Unlock()
+
+	return int64(len(userCache) - 1), nil
 }
 
 // request handlers
@@ -241,8 +272,16 @@ func getInitialize(c echo.Context) error {
 			havereadCache[digest] = unh.Haveread
 		}
 	}
-	log.Printf("Succeeded to cache.")
 
+	userCache = []User{}
+	if err := db.Select(&userCache, "SELECT * FROM user"); err != nil {
+		panic(err)
+	}
+	for _, user := range userCache {
+		userNameCache[user.Name] = user
+	}
+
+	log.Printf("Succeeded to cache.")
 	return c.String(204, "")
 }
 
@@ -338,11 +377,12 @@ func postLogin(c echo.Context) error {
 	}
 
 	var user User
-	err := db.Get(&user, "SELECT * FROM user WHERE name = ?", name)
-	if err == sql.ErrNoRows {
+
+	userNameCacheMutex.Lock()
+	user, ok := userNameCache[name]
+	userNameCacheMutex.Unlock()
+	if !ok {
 		return echo.ErrForbidden
-	} else if err != nil {
-		return err
 	}
 
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(user.Salt+pw)))
@@ -387,11 +427,9 @@ func postMessage(c echo.Context) error {
 
 func jsonifyMessage(m Message) (map[string]interface{}, error) {
 	u := User{}
-	err := db.Get(&u, "SELECT name, display_name, avatar_icon FROM user WHERE id = ?",
-		m.UserID)
-	if err != nil {
-		return nil, err
-	}
+	userCacheMutex.Lock()
+	u = userCache[m.UserID-1]
+	userCacheMutex.Unlock()
 
 	r := make(map[string]interface{})
 	r["id"] = m.ID
@@ -612,13 +650,23 @@ func getProfile(c echo.Context) error {
 
 	userName := c.Param("user_name")
 	var other User
-	err = db.Get(&other, "SELECT * FROM user WHERE name = ?", userName)
-	if err == sql.ErrNoRows {
-		return echo.ErrNotFound
+
+	userNameCacheMutex.Lock()
+	other, ok := userNameCache[userName]
+	userNameCacheMutex.Unlock()
+	if !ok {
+		return echo.ErrForbidden
 	}
-	if err != nil {
-		return err
-	}
+
+	/*
+		err = db.Get(&other, "SELECT * FROM user WHERE name = ?", userName)
+		if err == sql.ErrNoRows {
+			return echo.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+	*/
 
 	return c.Render(http.StatusOK, "profile", map[string]interface{}{
 		"ChannelID":   0,
@@ -719,21 +767,49 @@ func postProfile(c echo.Context) error {
 		defer file.Close()
 
 		file.Write(avatarData)
-		//_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
-		//if err != nil {
-		//	return err
-		//}
+		/*
+		_, err := db.Exec("INSERT INTO image (name, data) VALUES (?, ?)", avatarName, avatarData)
+		if err != nil {
+			return err
+		}
+		*/
+		/*
 		_, err = db.Exec("UPDATE user SET avatar_icon = ? WHERE id = ?", avatarName, self.ID)
 		if err != nil {
 			return err
 		}
+		*/
+		userCacheMutex.Lock()
+		u := userCache[self.ID-1]
+		userCacheMutex.Unlock()
+		u.AvatarIcon = avatarName
+
+		userCacheMutex.Lock()
+		userCache[self.ID-1] = u
+		userCacheMutex.Unlock()
+		userNameCacheMutex.Lock()
+		userNameCache[u.Name] = u
+		userNameCacheMutex.Unlock()
 	}
 
 	if name := c.FormValue("display_name"); name != "" {
+		/*
 		_, err := db.Exec("UPDATE user SET display_name = ? WHERE id = ?", name, self.ID)
 		if err != nil {
 			return err
 		}
+		*/
+		userCacheMutex.Lock()
+		u := userCache[self.ID-1]
+		userCacheMutex.Unlock()
+		u.DisplayName = name
+
+		userCacheMutex.Lock()
+		userCache[self.ID-1] = u
+		userCacheMutex.Unlock()
+		userNameCacheMutex.Lock()
+		userNameCache[u.Name] = u
+		userNameCacheMutex.Unlock()
 	}
 
 	return c.Redirect(http.StatusSeeOther, "/")
