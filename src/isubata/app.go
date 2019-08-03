@@ -97,6 +97,8 @@ func init() {
 	for _, user := range userCache {
 		userNameCache[user.Name] = user
 	}
+	fmt.Println(userCache)
+	fmt.Println(len(userCache))
 
 }
 
