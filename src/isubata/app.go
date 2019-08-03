@@ -433,7 +433,7 @@ func getMessage(c echo.Context) error {
 
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chanID))+strconv.Itoa(int(userID)))))
 
-	if len(message) > 0 {
+	if len(messages) > 0 {
 		havereadCacheMutex.Lock()
 		havereadCache[digest] = messages[0].ID
 		havereadCacheMutex.Unlock()
