@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -458,9 +459,16 @@ func postMessage(c echo.Context) error {
 }
 
 func jsonifyMessage(m Message) (map[string]interface{}, error) {
+	userID2OrderMutex.Lock()
+	index, ok := userID2Order[m.UserID]
+	userID2OrderMutex.Unlock()
+	if !ok {
+		return nil, errors.New("")
+	}
+
 	u := User{}
 	userCacheMutex.Lock()
-	u = userCache[m.UserID-1]
+	u = userCache[index]
 	userCacheMutex.Unlock()
 
 	r := make(map[string]interface{})
