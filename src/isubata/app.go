@@ -33,7 +33,7 @@ const (
 	avatarMaxBytes  = 1 * 1024 * 1024
 	numberOfUser    = 2048
 	numberOfChannel = 1024
-	REDIS_ADDRESS   = "10.128.0.2"
+	REDIS_ADDRESS   = "10.128.0.2:6379"
 )
 
 var (
