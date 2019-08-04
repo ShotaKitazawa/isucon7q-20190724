@@ -579,7 +579,8 @@ func getHistory(c echo.Context) error {
 	//cnt = messageCountCache[chID]
 	cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 	if err != nil {
-		return errors.New(fmt.Sprintf("getHistory: channelID: %d", chID))
+		//return errors.New(fmt.Sprintf("getHistory: channelID: %d", chID))
+		cnt = 0
 	}
 	//messageCountCacheMutex.Unlock()
 
