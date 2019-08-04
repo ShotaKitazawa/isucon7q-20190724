@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"html/template"
 	"io"
