@@ -124,7 +124,6 @@ func addMessage(channelID, userID int64, content string) (int64, error) {
 		fmt.Println(fmt.Sprintf("addMessage: channelID: %d", channelID))
 		return 0, err
 	}
-
 	//messageCountCacheMutex.Unlock()
 
 	res, err := db.Exec(
@@ -539,6 +538,8 @@ func fetchUnread(c echo.Context) error {
 			if err != nil {
 				cnt = 0
 				//return errors.New(fmt.Sprintf("fetchUnread: channelID: %d", chID))
+				fmt.Printf("fetchUnread: channelID: %d\n", chID)
+				fmt.Println(err)
 			}
 			//messageCountCacheMutex.Unlock()
 		}
@@ -580,6 +581,8 @@ func getHistory(c echo.Context) error {
 	cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 	if err != nil {
 		//return errors.New(fmt.Sprintf("getHistory: channelID: %d", chID))
+		fmt.Printf("getHistory: channelID: %d\n", chID)
+		fmt.Println(err)
 		cnt = 0
 	}
 	//messageCountCacheMutex.Unlock()
