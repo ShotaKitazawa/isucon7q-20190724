@@ -42,7 +42,7 @@ var (
 
 	// map[channel_id]message_countでキャッシュ
 	//messageCountCache      map[int64]int64
-	//messageCountCacheMutex sync.Mutex
+	messageCountCacheMutex sync.Mutex
 	// map[channel_id]map[user_id]message_id でキャッシュ
 	havereadCache      map[string]int64
 	havereadCacheMutex sync.Mutex
@@ -532,7 +532,7 @@ func fetchUnread(c echo.Context) error {
 			//err = db.Get(&cnt,
 			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 			//	chID)
-			//messageCountCacheMutex.Lock()
+			messageCountCacheMutex.Lock()
 			//cnt = messageCountCache[chID]
 			cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 			if err != nil {
@@ -541,7 +541,7 @@ func fetchUnread(c echo.Context) error {
 				fmt.Printf("fetchUnread: channelID: %d\n", chID)
 				fmt.Println(err)
 			}
-			//messageCountCacheMutex.Unlock()
+			messageCountCacheMutex.Unlock()
 		}
 		r := map[string]interface{}{
 			"channel_id": chID,
