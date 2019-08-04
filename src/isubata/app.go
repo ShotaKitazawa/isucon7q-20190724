@@ -535,7 +535,8 @@ func fetchUnread(c echo.Context) error {
 			//cnt = messageCountCache[chID]
 			cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 			if err != nil {
-				return errors.New(fmt.Sprintf("fetchUnread: channelID: %d", chID))
+				cnt = 0
+				//return errors.New(fmt.Sprintf("fetchUnread: channelID: %d", chID))
 			}
 			//messageCountCacheMutex.Unlock()
 		}
