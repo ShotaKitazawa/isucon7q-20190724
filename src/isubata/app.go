@@ -39,7 +39,7 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
-	conn             redis.Conn
+	conn          redis.Conn
 
 	// map[channel_id]message_countでキャッシュ
 	//messageCountCache      map[int64]int64
@@ -122,7 +122,7 @@ func addMessage(channelID, userID int64, content string) (int64, error) {
 	//messageCountCache[channelID] = messageCountCache[channelID] + 1
 	_, err := redis.Int(conn.Do("INCR", "messageCountCache_"+strconv.Itoa(int(channelID))))
 	if err != nil {
-		fmt.Println("redis error")
+		fmt.Println(fmt.Sprintf("addMessage: channelID: %d", channelID))
 		return 0, err
 	}
 
@@ -535,7 +535,7 @@ func fetchUnread(c echo.Context) error {
 			//cnt = messageCountCache[chID]
 			cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 			if err != nil {
-				return errors.New("redis error")
+				return errors.New(fmt.Sprintf("fetchUnread: channelID: %d", chID))
 			}
 			//messageCountCacheMutex.Unlock()
 		}
@@ -579,7 +579,7 @@ func getHistory(c echo.Context) error {
 	//cnt = messageCountCache[chID]
 	cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 	if err != nil {
-		return errors.New("redis error")
+		return errors.New(fmt.Sprintf("getHistory: channelID: %d", chID))
 	}
 	//messageCountCacheMutex.Unlock()
 
