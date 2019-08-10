@@ -12,11 +12,12 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	//_ "net/http/pprof"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/gomodule/redigo/redis"
@@ -834,7 +835,7 @@ func tRange(a, b int64) []int64 {
 }
 
 func main() {
-	go http.ListenAndServe(":3000", nil)
+	//go http.ListenAndServe(":3000", nil)
 
 	e := echo.New()
 	funcs := template.FuncMap{
@@ -845,9 +846,9 @@ func main() {
 		templates: template.Must(template.New("").Funcs(funcs).ParseGlob("views/*.html")),
 	}
 	e.Use(session.Middleware(sessions.NewCookieStore([]byte("secretonymoris"))))
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "request:\"${method} ${uri}\" status:${status} latency:${latency} (${latency_human}) bytes:${bytes_out}\n",
-	}))
+	//e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+	//	Format: "request:\"${method} ${uri}\" status:${status} latency:${latency} (${latency_human}) bytes:${bytes_out}\n",
+	//}))
 	e.Use(middleware.Static("../public"))
 
 	e.GET("/initialize", getInitialize)
