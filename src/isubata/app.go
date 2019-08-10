@@ -577,22 +577,47 @@ func getHistory(c echo.Context) error {
 		return ErrBadReqeust
 	}
 
-	messages := []Message{}
-	err = db.Select(&messages,
-		"SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+	type MessageAndUser struct {
+		MessageID   int64     `db:"id"`
+		UserName    string    `db:"user_name"`
+		DisplayName string    `db:"display_name"`
+		AvatarIcon  string    `json:"avatar_icon" db:"avatar_icon"`
+		CreatedAt   time.Time `db:"created_at"`
+		Content     string    `db:"content"`
+	}
+	message_and_user := []MessageAndUser{}
+	err = db.Select(&message_and_user,
+		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON u.id = m.user_id WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
 		chID, N, (page-1)*N)
 	if err != nil {
 		return err
 	}
-
 	mjson := make([]map[string]interface{}, 0)
-	for i := len(messages) - 1; i >= 0; i-- {
-		r, err := jsonifyMessage(messages[i])
-		if err != nil {
-			return err
+	for _, val := range message_and_user {
+		r := make(map[string]interface{})
+		r["id"] = val.MessageID
+		r["user"] = User{
+			Name:        val.UserName,
+			DisplayName: val.DisplayName,
+			AvatarIcon:  val.AvatarIcon,
 		}
-		mjson = append(mjson, r)
+		r["date"] = val.CreatedAt.Format("2006/01/02 15:04:05")
+		r["content"] = val.Content
 	}
+	//err = db.Select(&messages,
+	//	"SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+	//	chID, N, (page-1)*N)
+	//if err != nil {
+	//	return err
+	//}
+	//mjson := make([]map[string]interface{}, 0)
+	//for i := len(messages) - 1; i >= 0; i-- {
+	//	r, err := jsonifyMessage(messages[i])
+	//	if err != nil {
+	//		return err
+	//	}
+	//	mjson = append(mjson, r)
+	//}
 
 	channels := []ChannelInfo{}
 	err = db.Select(&channels, "SELECT * FROM channel ORDER BY id")
