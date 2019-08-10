@@ -455,7 +455,7 @@ func getMessage(c echo.Context) error {
 
 	message_and_user := []MessageAndUser{}
 	err = db.Select(&message_and_user,
-		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE WHERE m.id = ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100",
+		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE m.id > ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100",
 		lastID, chanID)
 	if err != nil {
 		return err
