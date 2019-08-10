@@ -38,7 +38,7 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
-	conn          redis.Conn
+	pool          *redis.Pool
 
 	// map[channel_id]message_countでキャッシュ
 	//messageCountCache      map[int64]int64
@@ -86,11 +86,25 @@ func init() {
 	//messageCountCache = make(map[int64]int64, numberOfChannel)
 	havereadCache = make(map[string]int64, numberOfUser)
 
-	var err error
-	conn, err = redis.Dial("tcp", REDIS_ADDRESS)
-	if err != nil {
-		panic(err)
+	pool = &redis.Pool{
+		MaxIdle:     128,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", REDIS_ADDRESS)
+			if err != nil {
+				return nil, err
+			}
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
 	}
+	//conn, err = redis.Dial("tcp", REDIS_ADDRESS)
+	//if err != nil {
+	//	panic(err)
+	//}
 }
 
 type User struct {
@@ -117,11 +131,13 @@ func getUser(userID int64) (*User, error) {
 func addMessage(channelID, userID int64, content string) (int64, error) {
 
 	//messageCountCache[channelID] = messageCountCache[channelID] + 1
+	conn := pool.Get()
 	_, err := redis.Int(conn.Do("INCR", "messageCountCache_"+strconv.Itoa(int(channelID))))
 	if err != nil {
 		fmt.Println(fmt.Sprintf("addMessage: channelID: %d", channelID))
 		return 0, err
 	}
+	conn.Close()
 
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
@@ -243,7 +259,9 @@ func getInitialize(c echo.Context) error {
 	}
 	for _, cmc := range cmcs {
 		//messageCountCache[cmc.ID] = cmc.Cnt
+		conn := pool.Get()
 		conn.Do("SET", "messageCountCache_"+strconv.Itoa(int(cmc.ID)), cmc.Cnt)
+		conn.Close()
 
 		if err := db.Select(&unhs, "SELECT u.id AS user, h.message_id AS haveread FROM user AS u JOIN haveread AS h ON u.id = h.user_id JOIN channel AS c ON c.id = h.channel_id WHERE c.id = ? order by u.id", cmc.ID); err != nil {
 			panic(err)
@@ -530,7 +548,9 @@ func fetchUnread(c echo.Context) error {
 			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 			//	chID)
 			//cnt = messageCountCache[chID]
+			conn := pool.Get()
 			cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
+			conn.Close()
 			if err != nil {
 				cnt = 0
 				//return errors.New(fmt.Sprintf("fetchUnread: channelID: %d", chID))
@@ -572,7 +592,9 @@ func getHistory(c echo.Context) error {
 	const N = 20
 	var cnt int64
 	//cnt = messageCountCache[chID]
+	conn := pool.Get()
 	cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
+	conn.Close()
 	if err != nil {
 		//return errors.New(fmt.Sprintf("getHistory: channelID: %d", chID))
 		fmt.Printf("getHistory: channelID: %d\n", chID)
