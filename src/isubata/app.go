@@ -603,6 +603,7 @@ func getHistory(c echo.Context) error {
 		}
 		r["date"] = val.CreatedAt.Format("2006/01/02 15:04:05")
 		r["content"] = val.Content
+		mjson = append(mjson, r)
 	}
 	//err = db.Select(&messages,
 	//	"SELECT * FROM message WHERE channel_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
