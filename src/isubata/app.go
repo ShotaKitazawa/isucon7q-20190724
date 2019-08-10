@@ -587,22 +587,22 @@ func getHistory(c echo.Context) error {
 	}
 	message_and_user := []MessageAndUser{}
 	err = db.Select(&message_and_user,
-		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id ASC LIMIT ? OFFSET ?",
+		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
 		chID, N, (page-1)*N)
 	if err != nil {
 		return err
 	}
 	mjson := make([]map[string]interface{}, 0)
-	for _, val := range message_and_user {
+	for i := len(message_and_user) - 1; i >= 0; i-- {
 		r := make(map[string]interface{})
-		r["id"] = val.MessageID
+		r["id"] = message_and_user[i].MessageID
 		r["user"] = User{
-			Name:        val.UserName,
-			DisplayName: val.DisplayName,
-			AvatarIcon:  val.AvatarIcon,
+			Name:        message_and_user[i].UserName,
+			DisplayName: message_and_user[i].DisplayName,
+			AvatarIcon:  message_and_user[i].AvatarIcon,
 		}
-		r["date"] = val.CreatedAt.Format("2006/01/02 15:04:05")
-		r["content"] = val.Content
+		r["date"] = message_and_user[i].CreatedAt.Format("2006/01/02 15:04:05")
+		r["content"] = message_and_user[i].Content
 		mjson = append(mjson, r)
 	}
 	//err = db.Select(&messages,
