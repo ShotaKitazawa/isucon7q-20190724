@@ -42,7 +42,6 @@ var (
 
 	// map[channel_id]message_countでキャッシュ
 	//messageCountCache      map[int64]int64
-	messageCountCacheMutex sync.Mutex
 	// map[channel_id]map[user_id]message_id でキャッシュ
 	havereadCache      map[string]int64
 	havereadCacheMutex sync.Mutex
@@ -117,14 +116,12 @@ func getUser(userID int64) (*User, error) {
 
 func addMessage(channelID, userID int64, content string) (int64, error) {
 
-	//messageCountCacheMutex.Lock()
 	//messageCountCache[channelID] = messageCountCache[channelID] + 1
 	_, err := redis.Int(conn.Do("INCR", "messageCountCache_"+strconv.Itoa(int(channelID))))
 	if err != nil {
 		fmt.Println(fmt.Sprintf("addMessage: channelID: %d", channelID))
 		return 0, err
 	}
-	//messageCountCacheMutex.Unlock()
 
 	res, err := db.Exec(
 		"INSERT INTO message (channel_id, user_id, content, created_at) VALUES (?, ?, ?, NOW())",
@@ -532,7 +529,6 @@ func fetchUnread(c echo.Context) error {
 			//err = db.Get(&cnt,
 			//	"SELECT COUNT(*) as cnt FROM message WHERE channel_id = ?",
 			//	chID)
-			messageCountCacheMutex.Lock()
 			//cnt = messageCountCache[chID]
 			cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 			if err != nil {
@@ -541,7 +537,6 @@ func fetchUnread(c echo.Context) error {
 				fmt.Printf("fetchUnread: channelID: %d\n", chID)
 				fmt.Println(err)
 			}
-			messageCountCacheMutex.Unlock()
 		}
 		r := map[string]interface{}{
 			"channel_id": chID,
@@ -576,7 +571,6 @@ func getHistory(c echo.Context) error {
 
 	const N = 20
 	var cnt int64
-	//messageCountCacheMutex.Lock()
 	//cnt = messageCountCache[chID]
 	cnt, err = redis.Int64(conn.Do("GET", "messageCountCache_"+strconv.Itoa(int(chID))))
 	if err != nil {
@@ -585,7 +579,6 @@ func getHistory(c echo.Context) error {
 		fmt.Println(err)
 		cnt = 0
 	}
-	//messageCountCacheMutex.Unlock()
 
 	maxPage := int64(cnt+N-1) / N
 	if maxPage == 0 {
