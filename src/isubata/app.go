@@ -103,6 +103,15 @@ type User struct {
 	CreatedAt   time.Time `json:"-" db:"created_at"`
 }
 
+type MessageAndUser struct {
+	MessageID   int64     `db:"id"`
+	UserName    string    `db:"user_name"`
+	DisplayName string    `db:"display_name"`
+	AvatarIcon  string    `json:"avatar_icon" db:"avatar_icon"`
+	CreatedAt   time.Time `db:"created_at"`
+	Content     string    `db:"content"`
+}
+
 func getUser(userID int64) (*User, error) {
 	u := User{}
 	if err := db.Get(&u, "SELECT * FROM user WHERE id = ?", userID); err != nil {
@@ -139,13 +148,6 @@ type Message struct {
 	UserID    int64     `db:"user_id"`
 	Content   string    `db:"content"`
 	CreatedAt time.Time `db:"created_at"`
-}
-
-func queryMessages(chanID, lastID int64) ([]Message, error) {
-	msgs := []Message{}
-	err := db.Select(&msgs, "SELECT * FROM message WHERE id > ? AND channel_id = ? ORDER BY id DESC LIMIT 100",
-		lastID, chanID)
-	return msgs, err
 }
 
 func sessUserID(c echo.Context) int64 {
@@ -432,30 +434,54 @@ func getMessage(c echo.Context) error {
 		return err
 	}
 
-	messages, err := queryMessages(chanID, lastID)
-	if err != nil {
-		return err
-	}
-
-	response := make([]map[string]interface{}, 0)
-	for i := len(messages) - 1; i >= 0; i-- {
-		m := messages[i]
-		r, err := jsonifyMessage(m)
+	/*
+		messages := []Message{}
+		err := db.Select(&messages, "SELECT * FROM message WHERE id > ? AND channel_id = ? ORDER BY id DESC LIMIT 100",
+			lastID, chanID)
 		if err != nil {
 			return err
 		}
-		response = append(response, r)
+
+		response := make([]map[string]interface{}, 0)
+		for i := len(messages) - 1; i >= 0; i-- {
+			m := messages[i]
+			r, err := jsonifyMessage(m)
+			if err != nil {
+				return err
+			}
+			response = append(response, r)
+		}
+	*/
+
+	message_and_user := []MessageAndUser{}
+	err = db.Select(&message_and_user,
+		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE WHERE m.id = ? AND m.channel_id = ? ORDER BY m.id DESC LIMIT 100",
+		lastID, chanID)
+	if err != nil {
+		return err
+	}
+	mjson := make([]map[string]interface{}, 0)
+	for i := len(message_and_user) - 1; i >= 0; i-- {
+		r := make(map[string]interface{})
+		r["id"] = message_and_user[i].MessageID
+		r["user"] = User{
+			Name:        message_and_user[i].UserName,
+			DisplayName: message_and_user[i].DisplayName,
+			AvatarIcon:  message_and_user[i].AvatarIcon,
+		}
+		r["date"] = message_and_user[i].CreatedAt.Format("2006/01/02 15:04:05")
+		r["content"] = message_and_user[i].Content
+		mjson = append(mjson, r)
 	}
 
 	digest := fmt.Sprintf("%x", sha1.Sum([]byte(strconv.Itoa(int(chanID))+strconv.Itoa(int(userID)))))
-
-	if len(messages) > 0 {
+	if len(message_and_user) > 0 {
 		conn := pool.Get()
-		conn.Do("SET", "havereadCache_"+digest, messages[0].ID)
+		conn.Do("SET", "havereadCache_"+digest, message_and_user[0].MessageID)
 		conn.Close()
 	}
 
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, mjson)
 }
 
 func queryChannels() ([]int64, error) {
@@ -577,14 +603,6 @@ func getHistory(c echo.Context) error {
 		return ErrBadReqeust
 	}
 
-	type MessageAndUser struct {
-		MessageID   int64     `db:"id"`
-		UserName    string    `db:"user_name"`
-		DisplayName string    `db:"display_name"`
-		AvatarIcon  string    `json:"avatar_icon" db:"avatar_icon"`
-		CreatedAt   time.Time `db:"created_at"`
-		Content     string    `db:"content"`
-	}
 	message_and_user := []MessageAndUser{}
 	err = db.Select(&message_and_user,
 		"SELECT m.id AS id, u.name AS user_name, u.display_name AS display_name, u.avatar_icon AS avatar_icon, m.created_at AS created_at, m.content AS content FROM message AS m JOIN user AS u ON m.user_id = u.id WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT ? OFFSET ?",
